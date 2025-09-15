@@ -3,7 +3,7 @@ title: bare-metal-fulfillment
 authors:
   - Tzu-Mainn Chen
 creation-date: 2025-09-08
-last-updated: 2025-09-08
+last-updated: 2025-09-15
 tracking-link:
   - None
 see-also:
@@ -18,21 +18,34 @@ superseded-by:
 
 ## Summary
 
-Bare metal fulfillment refers to the process through which a tenant acquires bare metal hosts and configures their networking.
+One key component of Virtual Data Center (VDC) fulfillment is the capability to perform bare metal fulfillment. Bare metal
+fulfillment refers to the process through which a tenant acquires bare metal hosts and configures their networking.
 Afterwards, the tenant will be able to perform selected operations on the host: inventory information, power control, and
 serial console access. Any further operations - for example, image-based provisioning - are outside the scope of the O-SAC
 solution and must be integrated by the cloud provider.
 
+We believe this feature set is generic enough to support a wide range of initial bare metal cluster use cases, including:
+
+* support for an environment where developers have to flexibility to install their own operating systems and software
+* support for alternative clusters such as SLURM
+* support for bare metal configuration during O-SAC cluster fulfillment
+
 In this context, a “tenant” is a person with admin rights to the requested bare metal resources; at the MOC, this person would be
 a ColdFront PI or manager.
+
+Although this proposal only covers bare metal fulfillment (and not VMs), we believe that developing this bare metal capability
+independently will allow us to create a thorough and reliable implementation that can later be used as a solid base for
+VDC fulfillment.
 
 ## Motivation
 
 Bare metal fulfillment is a fundamental requirement for O-SAC, identified as an explicit need for the MOC. It will also serve
-as the basis of bare metal configuration for other fulfillment workflows, such as OpenShift cluster fulfillment.
+as a component for other fulfillment workflows, such as VDC and OpenShift cluster fulfillment.
 
 ### User Stories
 
+* As a provider, I want to be able to define the available bare metal resource classes.
+* As a provider, I want to mark hosts as available for bare metal fulfillment.
 * As a tenant, I want to be able to see available bare metal resource classes.
 * As a tenant, I want to be able to select hosts for a bare metal cluster by resource class.
 * As a tenant, I want to be able to view inventory details for my hosts.
@@ -61,7 +74,7 @@ The implementation of bare metal fulfillment relies on three concepts:
 
 * HostPool: A collection of requested bare metal machines, along with their desired network configuration.
 * Host: An ephemeral resource created when bare metal resources are acquired from the underlying bare metal management layer. They represent the assignment of a bare metal resource to a HostPool, and provide an endpoint for host-specific operations.
-* HostClass: Defines a set of bare metal properties, such as memory, CPU, and network interfaces. Each Host has a single HostClass attribute.
+* HostClass: Defines a set of bare metal properties, such as memory, CPU, and network interfaces. Each Host has a single HostClass attribute. HostClasses are defined by the provider.
 
 At a high level, tenants will request a HostPool by specifying:
 
@@ -98,6 +111,16 @@ following topics merit further discussion in the "Implementation Details/Notes/C
 1. The tenant uses the Fulfillment CLI to update the network configuration of a HostPool.
 2. The O-SAC solution fulfills the request by updating the network configuration of the hosts in the HostPool.
 
+#### Host Pool Expansion
+
+1. The tenant uses the Fulfillment CLI to increase the number of requested hosts specified in a HostPool.
+2. The O-SAC solution fulfills the request by adding the requested hosts into the HostPool.
+
+#### Host Pool Reduction
+
+1. The tenant uses the Fulfillment CLI to decrease the number of requested hosts specified in a HostPool.
+2. The O-SAC solution fulfills the request by removing the requested hosts from the HostPool.
+
 #### Host Operations
 
 1. The tenant uses the Fulfillment CLI to see their Hosts.
@@ -112,10 +135,12 @@ following topics merit further discussion in the "Implementation Details/Notes/C
 
 #### HostPools
 
-A tenant requests bare metal resources by creating a HostPool. The following example suggests how we might manage host
-selection and network attachment.
+A tenant requests bare metal resources by creating a HostPool. In the following example, the
+tenant is requesting a HostPool with two fc430 hosts. Each host will have `network1` attached
+as a native VLAN on one physical interface; and a trunk port with `network2` as a native VLAN
+and `network3` as a tagged VLAN on a second physical interface.
 
-    apiVersion: cloudkit.openshift.io/v1alpha1
+    apiVersion: o-sac.openshift.io/v1alpha1
     kind: HostPool
     metadata:
       name: example
@@ -129,24 +154,15 @@ selection and network attachment.
       networkAttachments:
       # This configuration will match any available interface.
       - primary: network1
-	    vlans:
-	    - network2
-      # This configuration will only apply to interfaces that match one of the
-      # listed MAC addresses (the tenant may not know the MAC address of the hosts until
-      # after they have acquired the host).
-      - primary: network3
-        matches:
-          macaddrs:
-          - C0:FF:EE:5D:57:7C
-          - C0:FF:EE:96:AD:CA
-      # This configuration will only match interfaces with the `25gb` tag
-      - matches:
-   	    tag: 25gb
-        primary: storage-network
+      - primary: network2
+        vlans:
+	- network3
 
-In the simplest case, the requester does not specify explicit network connectivity:
+Tenants can also attach networks to interfaces matching a specific property. In this example,
+each fc430 will be configured with `network1` attached to any available physical interface,
+while `storage-network` will only be attached to an interface with the `25gb` property.
 
-    apiVersion: cloudkit.openshift.io/v1alpha1
+    apiVersion: o-sac.openshift.io/v1alpha1
     kind: HostPool
     metadata:
       name: example
@@ -154,12 +170,18 @@ In the simplest case, the requester does not specify explicit network connectivi
       hostRequests:
       - resourceClass: fc430
         numberOfHosts: 2
-      networks:
-      - network1
-      - storage-network
 
-With no explicit connectivity, all of the specified networks will be connected to available interfaces as access ports. It is an error
-if there are more networks than available interfaces.
+      # The networkAttachments section controls how networks are connected to
+      # physical interfaces.
+      networkAttachments:
+      # This configuration will match any available interface.
+      - primary: network1
+      # This configuration will only match interfaces with the `25gb` property
+      - matches:
+   	    property: 25gb
+        primary: storage-network
+
+If a tenant wishes to change the number of hosts or network configuration of their HostPool, they can simply update the HostPool.
 
 #### Hosts
 
@@ -198,9 +220,13 @@ to host assignment and unassignment.
 There are multiple directions we could explore for serial console support:
 
 * ESI already supports serial console access through socat (using an Ironic feature exposed through an ESI proxy). We could simply
-generate the direct console URL and store that in the resource status. However, it is unknown whether other bare metal services
-would have similar support for serial console access; if not, an alternative generic solution may be preferable.
+generate the direct console URL and store that in the resource status.
 * We could implement serial console support similar to the pod exec api (https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.23/#execaction-v1-core)
+
+The first solution has the advantage of already being implemented within ESI; all we have to do is expose the URL generated by
+ESI. However, it is unknown whether other bare metal services would have similar support for serial console access; for that
+reason, we may want to investigate the possibility of a more generic solution that can be consistently used across multiple
+bare metal management implementations.
 
 #### Task Groupings
 
@@ -231,7 +257,8 @@ We can perform this implementation in smaller steps:
 One alternative would be to focus on an ESI replacement before developing the bare metal fulfillment
 functionality. However, we anticipate that the MOC will continue to use ESI for now; for that reason,
 it makes sense to perform this implementation with ESI in mind, and simply make it easy to replace
-ESI when possible.
+ESI if/when needed. Note that it is also possible that we will continue to use ESI if the issues
+pushing us towards a replacement are fixed.
 
 ## Open Questions [optional]
 
@@ -244,23 +271,23 @@ TBD
 
 ## Graduation Criteria
 
-??
+TBD
 
 ### Removing a deprecated feature
 
-??
+TBD
 
 ## Upgrade / Downgrade Strategy
 
-??
+TBD
 
 ## Version Skew Strategy
 
-??
+TBD
 
 ## Support Procedures
 
-??
+TBD
 
 ## Infrastructure Needed [optional]
 
