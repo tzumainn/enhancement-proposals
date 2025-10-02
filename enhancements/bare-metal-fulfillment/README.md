@@ -30,8 +30,8 @@ We believe this feature set is generic enough to support a wide range of initial
 * support for alternative clusters such as SLURM
 * support for bare metal configuration during O-SAC cluster fulfillment
 
-In this context, a “tenant” is a person with admin rights to the requested bare metal resources; at the MOC, this person would be
-a ColdFront PI or manager.
+In this context, a “tenant” is an organization with admin rights to the requested bare metal resources; at the MOC, a tenant
+would be led by a ColdFront PI or manager.
 
 Although this proposal only covers bare metal fulfillment (and not VMs), we believe that developing this bare metal capability
 independently will allow us to create a thorough and reliable implementation that can later be used as a solid base for
@@ -47,7 +47,8 @@ as a component for other fulfillment workflows, such as VDC and OpenShift cluste
 * As a provider, I want to be able to define the available bare metal resource classes.
 * As a provider, I want to mark hosts as available for bare metal fulfillment.
 * As a tenant, I want to be able to see available bare metal resource classes.
-* As a tenant, I want to be able to select hosts for a bare metal cluster by resource class.
+* As a tenant, I want to be able to select hosts for a bare metal cluster by resource class and other possible filters (such as rack location).
+* As a tenant, I want to be able to increase or decrease the hosts for an existing bare metal cluster.
 * As a tenant, I want to be able to view inventory details for my hosts.
 * As a tenant, I want to be able to connect to the serial console of my hosts.
 * As a tenant, I want to be able to perform basic power control (power on/power off/reset) of my hosts.
@@ -78,11 +79,11 @@ The implementation of bare metal fulfillment relies on three concepts:
 
 At a high level, tenants will request a HostPool by specifying:
 
-* the number and HostClass of hosts
+* the number and HostClass of hosts, as well as any desired filters (for example: "hosts on rack X" or "not host with name Y")
 * the network configuration to be applied to those hosts (note that this configuration applies to each individual host in the HostPool)
 
-The O-SAC solution will assign the requested hosts to the tenant and create matching Host resources for each host. The tenant
-can then perform needed operations upon the Host.
+The O-SAC solution will find available hosts matcjing the request and assign them to the tenant, creating matching Host resources for each
+host. The tenant can then perform needed operations upon the Host.
 
 We expect bare metal fulfillment to follow the same workflow used for cluster fulfillment; as such, we expect to update the
 following existing O-SAC components:
@@ -103,7 +104,7 @@ following topics merit further discussion in the "Implementation Details/Notes/C
 
 #### Host Pool Creation
 
-1. The tenant uses the Fulfillment CLI to request a HostPool.
+1. The tenant uses the Fulfillment CLI to request a HostPool, specifying any desired filters.
 2. The O-SAC solution fulfills the request and creates Host resources corresponding to the allocated hosts.
 
 #### Host Pool Network Update
@@ -113,13 +114,13 @@ following topics merit further discussion in the "Implementation Details/Notes/C
 
 #### Host Pool Expansion
 
-1. The tenant uses the Fulfillment CLI to increase the number of requested hosts specified in a HostPool.
-2. The O-SAC solution fulfills the request by adding the requested hosts into the HostPool.
+1. The tenant uses the Fulfillment CLI to increase the number of requested hosts specified in a HostPool, updating any desired filters.
+2. The O-SAC solution fulfills the request by performing a reconciliation and adding the requested hosts into the HostPool.
 
 #### Host Pool Reduction
 
-1. The tenant uses the Fulfillment CLI to decrease the number of requested hosts specified in a HostPool.
-2. The O-SAC solution fulfills the request by removing the requested hosts from the HostPool.
+1. The tenant uses the Fulfillment CLI to decrease the number of requested hosts specified in a HostPool. If they wish to remove a specific host, they update their filters to include "not host with name X"; otherwise an arbitrary host will be removed.
+2. The O-SAC solution fulfills the request by performing a reconciliation and removing the requested hosts from the HostPool.
 
 #### Host Operations
 
@@ -135,8 +136,12 @@ following topics merit further discussion in the "Implementation Details/Notes/C
 
 #### HostPools
 
-A tenant requests bare metal resources by creating a HostPool. In the following example, the
-tenant is requesting a HostPool with two fc430 hosts. Each host will have `network1` attached
+A tenant requests bare metal resources by creating a HostPool with a desired specification. Once created, O-SAC
+will repeatedly attempt to fulfill the request until the state of the HostPool matches its specification. Tenants
+can update a HostPool specification, and the same reconciliation process will perform the needed operations to change
+the state of the HostPool.
+
+In the following example, the tenant is requesting a HostPool with two fc430 hosts. Each host will have `network1` attached
 as a native VLAN on one physical interface; and a trunk port with `network2` as a native VLAN
 and `network3` as a tagged VLAN on a second physical interface.
 
@@ -148,6 +153,53 @@ and `network3` as a tagged VLAN on a second physical interface.
       hostRequests:
       - resourceClass: fc430
         numberOfHosts: 2
+
+      # The networkAttachments section controls how networks are connected to
+      # physical interfaces.
+      networkAttachments:
+      # This configuration will match any available interface.
+      - primary: network1
+      - primary: network2
+        vlans:
+	- network3
+
+If the tenant wishes to specify host properties, they can add host filters; for example, this
+HostPool specification will require that hosts be located on rack R2:
+
+    apiVersion: o-sac.openshift.io/v1alpha1
+    kind: HostPool
+    metadata:
+      name: example
+    spec:
+      hostRequests:
+      - resourceClass: fc430
+        numberOfHosts: 2
+	filters:
+	- rack: R2
+
+      # The networkAttachments section controls how networks are connected to
+      # physical interfaces.
+      networkAttachments:
+      # This configuration will match any available interface.
+      - primary: network1
+      - primary: network2
+        vlans:
+	- network3
+
+If they wish to remove a specific host from their HostPool, they can update their
+HostPool specification to reduce the number of hosts and exclude that host by name:
+
+    apiVersion: o-sac.openshift.io/v1alpha1
+    kind: HostPool
+    metadata:
+      name: example
+    spec:
+      hostRequests:
+      - resourceClass: fc430
+        numberOfHosts: 1
+	filters:
+	- rack: R2
+	  exclude: HostX
 
       # The networkAttachments section controls how networks are connected to
       # physical interfaces.
@@ -180,8 +232,6 @@ while `storage-network` will only be attached to an interface with the `25gb` pr
       - matches:
    	    property: 25gb
         primary: storage-network
-
-If a tenant wishes to change the number of hosts or network configuration of their HostPool, they can simply update the HostPool.
 
 #### Hosts
 
@@ -238,6 +288,10 @@ We can perform this implementation in smaller steps:
   * Hosts are created when a HostPool is fulfilled
   * Tenants can view their Hosts
   * Tenants have power control on their Hosts
+* Implement HostPool filters
+  * filter by name (to support removal of specific hosts from a HostPool)
+  * filter by rack
+  * affinity/anti-affinity
 * Network Attachments
   * Tenants can specify network attachments when creating/updating HostPools
   * Requires network service
@@ -262,7 +316,6 @@ pushing us towards a replacement are fixed.
 
 ## Open Questions [optional]
 
-* Do we have consensus that network configuration can only be performed on a HostPool, and not on an individual Host?
 * Can we remove network attachment by MAC address?
 
 ## Test Plan
