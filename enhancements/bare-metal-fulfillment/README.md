@@ -161,9 +161,9 @@ and `network3` as a tagged VLAN on a second physical interface.
       - primary: network1
       - primary: network2
         vlans:
-	- network3
+        - network3
 
-If the tenant wishes to specify host properties, they can add host filters; for example, this
+If the tenant wishes to specify host properties, they can filter hosts by specifying hostSelectors; for example, this
 HostPool specification will require that hosts be located on rack R2:
 
     apiVersion: o-sac.openshift.io/v1alpha1
@@ -174,7 +174,7 @@ HostPool specification will require that hosts be located on rack R2:
       hostRequests:
       - resourceClass: fc430
         numberOfHosts: 2
-	filters:
+	hostSelectors:
 	- rack: R2
 
       # The networkAttachments section controls how networks are connected to
@@ -184,10 +184,13 @@ HostPool specification will require that hosts be located on rack R2:
       - primary: network1
       - primary: network2
         vlans:
-	- network3
+        - network3
 
 If they wish to remove a specific host from their HostPool, they can update their
-HostPool specification to reduce the number of hosts and exclude that host by name:
+HostPool specification to reduce the number of hosts and exclude that host by name;
+this prevents the reconciliation loop from simply re-adding the host later. Note
+that this also allows for a tenant to replace a host by keeping the number of
+hosts constant while also excluding the unwanted host.
 
     apiVersion: o-sac.openshift.io/v1alpha1
     kind: HostPool
@@ -197,9 +200,10 @@ HostPool specification to reduce the number of hosts and exclude that host by na
       hostRequests:
       - resourceClass: fc430
         numberOfHosts: 1
-	filters:
+	hostSelectors:
 	- rack: R2
-	  exclude: HostX
+	  exclude:
+	  - HostX
 
       # The networkAttachments section controls how networks are connected to
       # physical interfaces.
@@ -230,7 +234,7 @@ while `storage-network` will only be attached to an interface with the `25gb` pr
       - primary: network1
       # This configuration will only match interfaces with the `25gb` property
       - matches:
-   	    property: 25gb
+            property: 25gb
         primary: storage-network
 
 #### Hosts
@@ -251,6 +255,15 @@ To support these operations, we propose a new Hosts API. For example, we can imp
     spec:
       powerState: PowerOn
       serialConsole: Enabled
+    status:
+      powerState: PowerOn
+      serialConsole: Enabled
+      name: HostX
+      properties:
+        cpus: 512
+	memory_mb: 1572864
+	accelerators:
+	- "NVIDIA Corporation GH100"
 
 ### Implementation Details/Notes/Constraints
 
@@ -288,7 +301,7 @@ We can perform this implementation in smaller steps:
   * Hosts are created when a HostPool is fulfilled
   * Tenants can view their Hosts
   * Tenants have power control on their Hosts
-* Implement HostPool filters
+* Implement HostPool hostSelectors
   * filter by name (to support removal of specific hosts from a HostPool)
   * filter by rack
   * affinity/anti-affinity
