@@ -52,8 +52,8 @@ as a component for other fulfillment workflows, such as VDC and OpenShift cluste
 * As a tenant, I want to be able to view inventory details for my hosts.
 * As a tenant, I want to be able to connect to the serial console of my hosts.
 * As a tenant, I want to be able to perform basic power control (power on/power off/reset) of my hosts.
-* As a tenant, I want to be able to attach hosts to existing networks.
-* As a tenant, I want to be able to modify the network connectivity of my hosts by attaching or detaching networks.
+* As a tenant, I want to be able to specify network attachments for a host when I first acquire it.
+* As a tenant, I want to be able to modify the network attachments of a host that I have already acquired.
 * As a tenant, I want to be able to manage connectivity at the interface level in order to support hardware that may have both regular and high performance interfaces (for example, some hosts may have high-bandwidth connectivity for GPU workloads, and it may be necessary to attach specific networks to these interfaces).
 
 ### Goals
@@ -212,7 +212,7 @@ hosts constant while also excluding the unwanted host.
       - primary: network1
       - primary: network2
         vlans:
-	- network3
+        - network3
 
 Tenants can also attach networks to interfaces matching a specific property. In this example,
 each fc430 will be configured with `network1` attached to any available physical interface,
@@ -261,9 +261,9 @@ To support these operations, we propose a new Hosts API. For example, we can imp
       name: HostX
       properties:
         cpus: 512
-	memory_mb: 1572864
-	accelerators:
-	- "NVIDIA Corporation GH100"
+        memory_mb: 1572864
+        accelerators:
+        - "NVIDIA Corporation GH100"
 
 ### Implementation Details/Notes/Constraints
 
@@ -329,7 +329,8 @@ pushing us towards a replacement are fixed.
 
 ## Open Questions [optional]
 
-* Can we remove network attachment by MAC address?
+* Can we manage network attachment by MAC address?
+* Do we allow a network to be attached multiple times to a host (on different interfaces)?
 
 ## Test Plan
 
