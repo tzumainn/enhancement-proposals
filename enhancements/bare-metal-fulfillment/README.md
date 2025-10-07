@@ -163,8 +163,9 @@ and `network3` as a tagged VLAN on a second physical interface.
         vlans:
         - network3
 
-If the tenant wishes to specify host properties, they can filter hosts by specifying hostSelectors; for example, this
-HostPool specification will require that hosts be located on rack R2:
+If the tenant wishes to specify host properties, they can filter hosts by specifying hostSelectors that use standard
+Kubernetes `matchLabel` and `matchExpression` syntax; for example, this HostPool specification will require that hosts
+be located on rack R2, but not in cabinet C2:
 
     apiVersion: o-sac.openshift.io/v1alpha1
     kind: HostPool
@@ -175,7 +176,12 @@ HostPool specification will require that hosts be located on rack R2:
       - resourceClass: fc430
         numberOfHosts: 2
 	hostSelectors:
-	- rack: R2
+          matchLabels:
+            row: R2
+          matchExpressions:
+          - op: NotIn
+            key: cabinet
+            values: ["C2"]
 
       # The networkAttachments section controls how networks are connected to
       # physical interfaces.
@@ -201,9 +207,10 @@ hosts constant while also excluding the unwanted host.
       - resourceClass: fc430
         numberOfHosts: 1
 	hostSelectors:
-	- rack: R2
-	  exclude:
-	  - HostX
+          matchExpressions:
+          - op: NotIn
+            key: hostName
+            values: ["HostX"]
 
       # The networkAttachments section controls how networks are connected to
       # physical interfaces.
