@@ -82,7 +82,7 @@ At a high level, tenants will request a HostPool by specifying:
 * the number and HostClass of hosts, as well as any desired filters (for example: "hosts on rack X" or "not host with name Y")
 * the network configuration to be applied to those hosts (note that this configuration applies to each individual host in the HostPool)
 
-The O-SAC solution will find available hosts matcjing the request and assign them to the tenant, creating matching Host resources for each
+The O-SAC solution will find available hosts matching the request and assign them to the tenant, creating matching Host resources for each
 host. The tenant can then perform needed operations upon the Host.
 
 We expect bare metal fulfillment to follow the same workflow used for cluster fulfillment; as such, we expect to update the
