@@ -73,7 +73,7 @@ We will not substantially modify the existing cluster fulfillment workflow at th
 
 The implementation of bare metal fulfillment relies on three concepts:
 
-* HostPool: A collection of requested bare metal machines, along with their desired network configuration.
+* HostPool: A collection of requested bare metal machines (potentially from multiple resource classes), along with their desired network configuration.
 * Host: An ephemeral resource created when bare metal resources are acquired from the underlying bare metal management layer. They represent the assignment of a bare metal resource to a HostPool, and provide an endpoint for host-specific operations.
 * HostClass: Defines a set of bare metal properties, such as memory, CPU, and network interfaces. Each Host has a single HostClass attribute. HostClasses are defined by the provider.
 
