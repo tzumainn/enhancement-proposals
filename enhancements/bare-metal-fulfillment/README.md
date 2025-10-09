@@ -312,7 +312,11 @@ We can perform this implementation in smaller steps:
 
 ### Risks and Mitigations
 
-??
+How do we prevent a tenant from performing unauthorized bare metal operations? The first layer of protection
+is the fact that the tenant never has direct access to the underlying bare metal management service; they
+only have access to the fulfillment service and the limited operations provided by the fulfillment API.
+Naturally, that API will need strong multi-tenancy support in order to prevent a tenant from accessing
+resources allocated to a different tenant; that feature is being implemented outside of this proposal.
 
 ### Drawbacks
 
