@@ -30,8 +30,8 @@ We believe this feature set is generic enough to support a wide range of initial
 * support for alternative clusters such as SLURM
 * support for bare metal configuration during O-SAC cluster fulfillment
 
-In this context, a “tenant” is an organization with admin rights to the requested bare metal resources; at the MOC, a tenant
-would be led by a ColdFront PI or manager.
+In this context, a “tenant” is an organization that can perform selected actions on the requested bare metal resources in
+order to achieve these use cases; at the MOC, a tenant would be led by a ColdFront PI or manager.
 
 Although this proposal only covers bare metal fulfillment (and not VMs), we believe that developing this bare metal capability
 independently will allow us to create a thorough and reliable implementation that can later be used as a solid base for
