@@ -188,7 +188,10 @@ be located on rack R2, but not in cabinet C2:
         vlans:
         - network3
 
-If they wish to remove a specific host from their HostPool, they can update their
+Note that initially, information regarding valid key/value pairs will have to be provided out-of-band by the
+cloud provider. A later enhancement may allow O-SAC to provide this information through an API.
+
+If the tenant wishes to remove a specific host from their HostPool, they can update their
 HostPool specification to reduce the number of hosts and exclude that host by name;
 this prevents the reconciliation loop from simply re-adding the host later. Note
 that this also allows for a tenant to replace a host by keeping the number of
