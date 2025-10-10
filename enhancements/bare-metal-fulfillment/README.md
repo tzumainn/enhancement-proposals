@@ -18,24 +18,19 @@ superseded-by:
 
 ## Summary
 
-One key component of Virtual Data Center (VDC) fulfillment is the capability to perform bare metal fulfillment. Bare metal
-fulfillment refers to the process through which a tenant acquires bare metal hosts and configures their networking.
+Bare metal fulfillment refers to the process through which a tenant acquires bare metal hosts and configures their networking.
 Afterwards, the tenant will be able to perform selected operations on the host: inventory information, power control, and
 serial console access. Any further operations - for example, image-based provisioning - are outside the scope of the O-SAC
 solution and must be integrated by the cloud provider.
 
 We believe this feature set is generic enough to support a wide range of initial bare metal cluster use cases, including:
 
-* support for an environment where developers have to flexibility to install their own operating systems and software
+* support for an environment where developers have the flexibility to install their own operating systems and software
 * support for alternative clusters such as SLURM
 * support for bare metal configuration during O-SAC cluster fulfillment
 
 In this context, a “tenant” is an organization that can perform selected actions on the requested bare metal resources in
 order to achieve these use cases; at the MOC, a tenant would be led by a ColdFront PI or manager.
-
-Although this proposal only covers bare metal fulfillment (and not VMs), we believe that developing this bare metal capability
-independently will allow us to create a thorough and reliable implementation that can later be used as a solid base for
-VDC fulfillment.
 
 ## Motivation
 
@@ -44,17 +39,17 @@ as a component for other fulfillment workflows, such as VDC and OpenShift cluste
 
 ### User Stories
 
-* As a provider, I want to be able to define the available bare metal resource classes.
+* As a provider, I want to define the available bare metal resource classes.
 * As a provider, I want to mark hosts as available for bare metal fulfillment.
-* As a tenant, I want to be able to see available bare metal resource classes.
-* As a tenant, I want to be able to select hosts for a bare metal cluster by resource class and other possible filters (such as rack location).
-* As a tenant, I want to be able to increase or decrease the hosts for an existing bare metal cluster.
-* As a tenant, I want to be able to view inventory details for my hosts.
-* As a tenant, I want to be able to connect to the serial console of my hosts.
-* As a tenant, I want to be able to perform basic power control (power on/power off/reset) of my hosts.
-* As a tenant, I want to be able to specify network attachments for a host when I first acquire it.
-* As a tenant, I want to be able to modify the network attachments of a host that I have already acquired.
-* As a tenant, I want to be able to manage connectivity at the interface level in order to support hardware that may have both regular and high performance interfaces (for example, some hosts may have high-bandwidth connectivity for GPU workloads, and it may be necessary to attach specific networks to these interfaces).
+* As a tenant, I want to see available bare metal resource classes.
+* As a tenant, I want to select hosts for a bare metal cluster by resource class and other possible filters (such as rack location).
+* As a tenant, I want to increase or decrease the number of hosts for an existing bare metal cluster.
+* As a tenant, I want to view inventory details for my hosts.
+* As a tenant, I want to connect to the serial console of my hosts.
+* As a tenant, I want to perform basic power control (power on/power off/reset) of my hosts.
+* As a tenant, I want to specify network attachments for a host when I first acquire it.
+* As a tenant, I want to modify the network attachments of a host that I have already acquired.
+* As a tenant, I want to manage connectivity at the interface level in order to support hardware that may have both regular and high performance interfaces (for example, some hosts may have high-bandwidth connectivity for GPU workloads, and it may be necessary to attach specific networks to these interfaces).
 
 ### Goals
 
@@ -82,8 +77,8 @@ At a high level, tenants will request a HostPool by specifying:
 * the number and HostClass of hosts, as well as any desired filters (for example: "hosts on rack X" or "not host with name Y")
 * the network configuration to be applied to those hosts (note that this configuration applies to each individual host in the HostPool)
 
-The O-SAC solution will find available hosts matching the request and assign them to the tenant, creating matching Host resources for each
-host. The tenant can then perform needed operations upon the Host.
+The O-SAC solution will find available hosts matching the request from the system's inventory, which is managed separately by the cloud provider. O-SAC
+will then assign them to the tenant, creating matching Host resources for each host. The tenant can then perform available operations upon the Host.
 
 We expect bare metal fulfillment to follow the same workflow used for cluster fulfillment; as such, we expect to update the
 following existing O-SAC components:
@@ -125,7 +120,7 @@ following topics merit further discussion in the "Implementation Details/Notes/C
 #### Host Operations
 
 1. The tenant uses the Fulfillment CLI to see their Hosts.
-2. The tenant uses the Fulfillment CLI to perform an operation upon the desired Host.
+2. The tenant uses the Fulfillment CLI to perform available operations upon the desired Host. Initially, these actions will be limited to power control; additional actions (such as console enablement) may be added later.
 
 #### Host Pool Deletion
 
@@ -142,8 +137,9 @@ can update a HostPool specification, and the same reconciliation process will pe
 the state of the HostPool.
 
 In the following example, the tenant is requesting a HostPool with two fc430 hosts. Each host will have `network1` attached
-as a native VLAN on one physical interface; and a trunk port with `network2` as a native VLAN
-and `network3` as a tagged VLAN on a second physical interface.
+as a native VLAN on one physical interface; and a trunk port with `network2` as a native VLAN and `network3` as a tagged VLAN
+on a second physical interface. It is assumed that the tenant will have knowledge of their available networks from a separate
+O-SAC network service (whose implementation is outside the scope of this proposal).
 
     apiVersion: o-sac.openshift.io/v1alpha1
     kind: HostPool
@@ -152,7 +148,7 @@ and `network3` as a tagged VLAN on a second physical interface.
     spec:
       hostRequests:
       - resourceClass: fc430
-        numberOfHosts: 2
+        replicas: 2
 
       # The networkAttachments section controls how networks are connected to
       # physical interfaces.
@@ -174,8 +170,8 @@ be located on rack R2, but not in cabinet C2:
     spec:
       hostRequests:
       - resourceClass: fc430
-        numberOfHosts: 2
-	hostSelectors:
+        replicas: 2
+        hostSelectors:
           matchLabels:
             row: R2
           matchExpressions:
@@ -205,8 +201,8 @@ hosts constant while also excluding the unwanted host.
     spec:
       hostRequests:
       - resourceClass: fc430
-        numberOfHosts: 1
-	hostSelectors:
+        replicas: 1
+        hostSelectors:
           matchExpressions:
           - op: NotIn
             key: hostName
@@ -232,7 +228,7 @@ while `storage-network` will only be attached to an interface with the `25gb` pr
     spec:
       hostRequests:
       - resourceClass: fc430
-        numberOfHosts: 2
+        replicas: 2
 
       # The networkAttachments section controls how networks are connected to
       # physical interfaces.
@@ -263,6 +259,7 @@ To support these operations, we propose a new Hosts API. For example, we can imp
       powerState: PowerOn
       serialConsole: Enabled
     status:
+      hostPool: HostPoolX
       powerState: PowerOn
       serialConsole: Enabled
       name: HostX
@@ -271,6 +268,8 @@ To support these operations, we propose a new Hosts API. For example, we can imp
         memory_mb: 1572864
         accelerators:
         - "NVIDIA Corporation GH100"
+
+The listed properties will depend upon the attributes returned by the underlying bare metal management service.
 
 ### Implementation Details/Notes/Constraints
 
