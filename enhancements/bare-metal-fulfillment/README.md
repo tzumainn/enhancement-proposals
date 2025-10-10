@@ -136,7 +136,7 @@ will repeatedly attempt to fulfill the request until the state of the HostPool m
 can update a HostPool specification, and the same reconciliation process will perform the needed operations to change
 the state of the HostPool.
 
-In the following example, the tenant is requesting a HostPool with two fc430 hosts. Each host will have `network1` attached
+In the following example, the tenant is requesting a HostPool with two fc430 hosts and one h100. Each host will have `network1` attached
 as a native VLAN on one physical interface; and a trunk port with `network2` as a native VLAN and `network3` as a tagged VLAN
 on a second physical interface. It is assumed that the tenant will have knowledge of their available networks from a separate
 O-SAC network service (whose implementation is outside the scope of this proposal).
@@ -149,6 +149,8 @@ O-SAC network service (whose implementation is outside the scope of this proposa
       hostRequests:
       - resourceClass: fc430
         replicas: 2
+      - resourceClass: h100
+        replicas: 1
 
       # The networkAttachments section controls how networks are connected to
       # physical interfaces.
@@ -160,8 +162,8 @@ O-SAC network service (whose implementation is outside the scope of this proposa
         - network3
 
 If the tenant wishes to specify host properties, they can filter hosts by specifying hostSelectors that use standard
-Kubernetes `matchLabel` and `matchExpression` syntax; for example, this HostPool specification will require that hosts
-be located on rack R2, but not in cabinet C2:
+Kubernetes `matchLabel` and `matchExpression` syntax; for example, this HostPool specification will require that the
+fc430 hosts be located on rack R2, but not in cabinet C2:
 
     apiVersion: o-sac.openshift.io/v1alpha1
     kind: HostPool
@@ -178,6 +180,8 @@ be located on rack R2, but not in cabinet C2:
           - op: NotIn
             key: cabinet
             values: ["C2"]
+      - resourceClass: h100
+        replicas: 1
 
       # The networkAttachments section controls how networks are connected to
       # physical interfaces.
@@ -210,6 +214,8 @@ hosts constant while also excluding the unwanted host.
           - op: NotIn
             key: hostName
             values: ["HostX"]
+      - resourceClass: h100
+        replicas: 1
 
       # The networkAttachments section controls how networks are connected to
       # physical interfaces.
@@ -232,6 +238,8 @@ while `storage-network` will only be attached to an interface with the `25gb` pr
       hostRequests:
       - resourceClass: fc430
         replicas: 2
+      - resourceClass: h100
+        replicas: 1
 
       # The networkAttachments section controls how networks are connected to
       # physical interfaces.
@@ -326,11 +334,8 @@ resources allocated to a different tenant; that feature is being implemented out
 
 ## Alternatives (Not Implemented)
 
-One alternative would be to focus on an ESI replacement before developing the bare metal fulfillment
-functionality. However, we anticipate that the MOC will continue to use ESI for now; for that reason,
-it makes sense to perform this implementation with ESI in mind, and simply make it easy to replace
-ESI if/when needed. Note that it is also possible that we will continue to use ESI if the issues
-pushing us towards a replacement are fixed.
+* One alternative would be to focus on an ESI replacement before developing the bare metal fulfillment functionality. However, we anticipate that the MOC will continue to use ESI for now; for that reason, it makes sense to perform this implementation with ESI in mind, and simply make it easy to replace ESI if/when needed. Note that it is also possible that we will continue to use ESI if the issues pushing us towards a replacement are resolved.
+* We could limit a HostPool to hosts from a single resource class; a tenant in need of hosts from multiple resource classes would simply create multiple HostPools. However allowing multiple resource classes in HostPool does provide additional conveniences. For example, cluster fulfillment allows for OpenShift clusters with mixed resource classes; if we move that workflow towards using HostPools for bare metal configuration, then associating that cluster with a single HostPool allows for far easier bare metal tracking and management.
 
 ## Open Questions [optional]
 
