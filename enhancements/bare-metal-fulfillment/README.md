@@ -114,7 +114,7 @@ following topics merit further discussion in the "Implementation Details/Notes/C
 
 #### Host Pool Reduction
 
-1. The tenant uses the Fulfillment CLI to decrease the number of requested hosts specified in a HostPool. If they wish to remove a specific host, they update their filters to include "not host with name X"; otherwise an arbitrary host will be removed.
+1. The tenant uses the Fulfillment CLI to decrease the number of requested hosts specified in a HostPool; they also optionally mark specific hosts for removal (this is detailed further below).
 2. The O-SAC solution fulfills the request by performing a reconciliation and removing the requested hosts from the HostPool.
 
 #### Host Operations
@@ -195,11 +195,37 @@ fc430 hosts be located on rack R2, but not in cabinet C2:
 Note that initially, information regarding valid key/value pairs will have to be provided out-of-band by the
 cloud provider. A later enhancement may allow O-SAC to provide this information through an API.
 
-If the tenant wishes to remove a specific host from their HostPool, they can update their
-HostPool specification to reduce the number of hosts and exclude that host by name;
-this prevents the reconciliation loop from simply re-adding the host later. Note
-that this also allows for a tenant to replace a host by keeping the number of
-hosts constant while also excluding the unwanted host.
+If the tenant wishes to remove a host from their HostPool, then they will update their HostPool specification to reduce
+the number of Hosts of a resource class. The reconciliation process will remove an arbitrary Host of that resource class
+from the HostPool:
+
+    apiVersion: o-sac.openshift.io/v1alpha1
+    kind: HostPool
+    metadata:
+      name: example
+    spec:
+      hostRequests:
+      - resourceClass: fc430
+        replicas: 1
+      - resourceClass: h100
+        replicas: 1
+
+      # The networkAttachments section controls how networks are connected to
+      # physical interfaces.
+      networkAttachments:
+      # This configuration will match any available interface.
+      - primary: network1
+      - primary: network2
+        vlans:
+        - network3
+
+If the tenant wishes to remove a specific host from their HostPool, then they will first mark a Host for removal
+using an O-SAC API that annotates the Host with a marker for deletion before reducing the number of Hosts within a HostPool.
+The reconciliation process will favor removing Hosts with that annotation.
+
+If a tenant wishes to remove a specific host and prevent it from ever being re-added to the HostPool, they can add
+a host selector that excludes a particular host by name. Note that this also allows for a tenant to replace a host by keeping the
+number of hosts constant while also excluding the unwanted host.
 
     apiVersion: o-sac.openshift.io/v1alpha1
     kind: HostPool
