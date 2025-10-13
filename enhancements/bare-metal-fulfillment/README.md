@@ -144,13 +144,16 @@ O-SAC network service (whose implementation is outside the scope of this proposa
     apiVersion: o-sac.openshift.io/v1alpha1
     kind: HostPool
     metadata:
-      name: example
+      name: examplehostpool
     spec:
       hostRequests:
       - resourceClass: fc430
         replicas: 2
       - resourceClass: h100
         replicas: 1
+      selector:
+        matchLabels:
+          hostPoolUID: 66b8ed6f-1af2-4892-ac12-47bd47dacd40
 
       # The networkAttachments section controls how networks are connected to
       # physical interfaces.
@@ -161,6 +164,9 @@ O-SAC network service (whose implementation is outside the scope of this proposa
         vlans:
         - network3
 
+Note that the selector values are supplied by the fulfillment service; these values are used to label the
+created Hosts without any input needed from the tenant.
+
 If the tenant wishes to specify host properties, they can filter hosts by specifying hostSelectors that use standard
 Kubernetes `matchLabel` and `matchExpression` syntax; for example, this HostPool specification will require that the
 fc430 hosts be located on rack R2, but not in cabinet C2:
@@ -168,7 +174,7 @@ fc430 hosts be located on rack R2, but not in cabinet C2:
     apiVersion: o-sac.openshift.io/v1alpha1
     kind: HostPool
     metadata:
-      name: example
+      name: examplehostpool
     spec:
       hostRequests:
       - resourceClass: fc430
@@ -182,6 +188,9 @@ fc430 hosts be located on rack R2, but not in cabinet C2:
             values: ["C2"]
       - resourceClass: h100
         replicas: 1
+      selector:
+        matchLabels:
+          hostPoolUID: 66b8ed6f-1af2-4892-ac12-47bd47dacd40
 
       # The networkAttachments section controls how networks are connected to
       # physical interfaces.
@@ -202,13 +211,16 @@ from the HostPool:
     apiVersion: o-sac.openshift.io/v1alpha1
     kind: HostPool
     metadata:
-      name: example
+      name: examplehostpool
     spec:
       hostRequests:
       - resourceClass: fc430
         replicas: 1
       - resourceClass: h100
         replicas: 1
+      selector:
+        matchLabels:
+          hostPoolUID: 66b8ed6f-1af2-4892-ac12-47bd47dacd40
 
       # The networkAttachments section controls how networks are connected to
       # physical interfaces.
@@ -230,7 +242,7 @@ number of hosts constant while also excluding the unwanted host.
     apiVersion: o-sac.openshift.io/v1alpha1
     kind: HostPool
     metadata:
-      name: example
+      name: examplehostpool
     spec:
       hostRequests:
       - resourceClass: fc430
@@ -239,9 +251,12 @@ number of hosts constant while also excluding the unwanted host.
           matchExpressions:
           - op: NotIn
             key: hostName
-            values: ["HostX"]
+            values: ["examplehost"]
       - resourceClass: h100
         replicas: 1
+      selector:
+        matchLabels:
+          hostPoolUID: 66b8ed6f-1af2-4892-ac12-47bd47dacd40
 
       # The networkAttachments section controls how networks are connected to
       # physical interfaces.
@@ -266,6 +281,9 @@ while `storage-network` will only be attached to an interface with the `25gb` pr
         replicas: 2
       - resourceClass: h100
         replicas: 1
+      selector:
+        matchLabels:
+          hostPoolUID: 66b8ed6f-1af2-4892-ac12-47bd47dacd40
 
       # The networkAttachments section controls how networks are connected to
       # physical interfaces.
@@ -291,21 +309,23 @@ To support these operations, we propose a new Hosts API. For example, we can imp
     apiVersion: cloudkit.openshift.io/v1alpha1
     kind: Host
     metadata:
-      name: example
+      name: examplehost
       ownerReferences:
       - apiVersion: o-sac.openshift.io/v1alpha1
         blockOwnerDeletion: true
         controller: true
         kind: HostPool
-        name: HostPoolX
+        name: examplehostpool
         uid: 66b8ed6f-1af2-4892-ac12-47bd47dacd40
+      labels:
+        hostPoolUID: 66b8ed6f-1af2-4892-ac12-47bd47dacd40
     spec:
       powerState: PowerOn
       serialConsole: Enabled
     status:
       powerState: PowerOn
       serialConsole: Enabled
-      name: HostX
+      name: examplehost
       properties:
         cpus: 512
         memory_mb: 1572864
