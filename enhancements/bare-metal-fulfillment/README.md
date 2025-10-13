@@ -99,33 +99,51 @@ following topics merit further discussion in the "Implementation Details/Notes/C
 
 #### Host Pool Creation
 
-1. The tenant uses the Fulfillment CLI to request a HostPool, specifying any desired filters.
-2. The O-SAC solution fulfills the request and creates Host resources corresponding to the allocated hosts.
+1. The tenant uses the Fulfillment CLI to request a HostPool by specifying the desired number of hosts and resource classes, as well as the desired network configuration.
+2. The Fulfillment Service receives the request and creates a new HostPool custom resource (CR) in the appropriate Hub.
+3. The O-SAC Operator begins the reconciliation process for the new HostPool CR, finding the requested hosts and creating matching Host CRs, and performing the requested network configuration.
+4. The O-SAC Operator monitors the status of the reconciliation process and updates the status of the HostPool CR to reflect the current state.
+5. The tenant uses the Fulfillment CLI to check the status of their requested HostPool.
 
 #### Host Pool Network Update
 
 1. The tenant uses the Fulfillment CLI to update the network configuration of a HostPool.
-2. The O-SAC solution fulfills the request by updating the network configuration of the hosts in the HostPool.
+2. The Fulfillment Service receives the request and updates the existing HostPool CR in the appropriate Hub.
+3. The O-SAC Operator begins the reconciliation process for the HostPool CR, noting the discrepency between the current network configuration and the desired networking confiuration, and updating the network configuration of the hosts.
+4. The O-SAC Operator monitors the status of the reconciliation process and updates the status of the HostPool CR to reflect the current state.
+5. The tenant uses the Fulfillment CLI to check the status of the HostPool.
 
 #### Host Pool Expansion
 
 1. The tenant uses the Fulfillment CLI to increase the number of requested hosts specified in a HostPool, updating any desired filters.
-2. The O-SAC solution fulfills the request by performing a reconciliation and adding the requested hosts into the HostPool.
+2. The Fulfillment Service receives the request and updates the existing HostPool CR in the appropriate Hub.
+3. The O-SAC Operator begins the reconciliation process for the HostPool CR, noting the discrepency between the current host count and the desired host count, and adding the requested hosts.
+4. The O-SAC Operator monitors the status of the reconciliation process and updates the status of the HostPool CR to reflect the current state.
+5. The tenant uses the Fulfillment CLI to check the status of the HostPool.
 
 #### Host Pool Reduction
 
 1. The tenant uses the Fulfillment CLI to decrease the number of requested hosts specified in a HostPool; they also optionally mark specific hosts for removal (this is detailed further below).
-2. The O-SAC solution fulfills the request by performing a reconciliation and removing the requested hosts from the HostPool.
+2. The Fulfillment Service receives the request and updates the existing HostPool CR in the appropriate Hub.
+3. The O-SAC Operator begins the reconciliation process for the HostPool CR, noting the discrepency between the current host count and the desired host count, and removing the requested hosts.
+4. The O-SAC Operator monitors the status of the reconciliation process and updates the status of the HostPool CR to reflect the current state.
+5. The tenant uses the Fulfillment CLI to check the status of the HostPool.
 
 #### Host Operations
 
-1. The tenant uses the Fulfillment CLI to see their Hosts.
+1. The tenant uses the Fulfillment CLI to view their Hosts.
 2. The tenant uses the Fulfillment CLI to perform available operations upon the desired Host. Initially, these actions will be limited to power control; additional actions (such as console enablement) may be added later.
+3. The Fulfillment Service receives the request and updates the existing Host CR in the appropriate Hub.
+3. The O-SAC Operator begins the reconciliation process for the Host CR, noting any discrepency between the current state and the desired state, and calling the bare metal service to perform any needed host operations.
+4. The O-SAC Operator monitors the status of the reconciliation process and updates the status of the Host CR to reflect the current state.
+5. The tenant uses the Fulfillment CLI to check the status of the Host.
 
 #### Host Pool Deletion
 
 1. The tenant uses the Fulfillment CLI to delete a HostPool.
-2. The O-SAC solution fulfills the request and removes the Host resources corresponding to the hosts in the HostPool.
+2. The Fulfillment Service receives the request and deletes the existing HostPool CR in the appropriate Hub.
+3. The deletion of the HostPool CR triggers cascading deletes of associated Hosts.
+4. The O-SAC Operator detects these deletions and calls the bare metal service to clean these hosts.
 
 ### API Extensions
 
@@ -136,21 +154,59 @@ will repeatedly attempt to fulfill the request until the state of the HostPool m
 can update a HostPool specification, and the same reconciliation process will perform the needed operations to change
 the state of the HostPool.
 
-In the following example, the tenant is requesting a HostPool with two fc430 hosts and one h100. Each host will have `network1` attached
-as a native VLAN on one physical interface; and a trunk port with `network2` as a native VLAN and `network3` as a tagged VLAN
-on a second physical interface. It is assumed that the tenant will have knowledge of their available networks from a separate
-O-SAC network service (whose implementation is outside the scope of this proposal).
+In the following example, the tenant uses the Fulfillment CLI to request a HostPool with two fc430 hosts and one h100.
+Each host will have `network1` attached as a native VLAN on one physical interface; and a trunk port with `network2` as a native
+VLAN and `network3` as a tagged VLAN on a second physical interface. It is assumed that the tenant will have knowledge of their
+available networks from a separate O-SAC network service (whose implementation is outside the scope of this proposal).
+
+    $ ./fulfillment-cli create hostpool \
+           --host-set workers=host_class:fc430,size:2 \
+           --host-set gpus=host_class:h100,size:1 \
+           --network-attachments primary:network1 \
+           --network-attachments primary:network2,vlans:network3
+
+The Fulfillment CLI sends this JSON request to the Fulfillment Service:
+
+    {
+      "object": {
+        "spec": {
+          "host_sets": {
+            "workers": {
+              "resource_class": "fc430",
+              "replicas": 2
+            },
+            "gpus": {
+              "resource_class": "h100",
+              "replicas": 1
+            }
+          },
+          "network_attachments": [
+            {
+              "primary": "network1"
+            },
+            {
+              "primary": "network2",
+              "vlans": ["network3"]
+            },
+          ]
+        }
+      }
+    }
+
+The Fulfillment Service creates the following HostPool CR:
 
     apiVersion: o-sac.openshift.io/v1alpha1
     kind: HostPool
     metadata:
       name: examplehostpool
     spec:
-      hostRequests:
-      - resourceClass: fc430
-        replicas: 2
-      - resourceClass: h100
-        replicas: 1
+      hostSets:
+        workers:
+          resourceClass: fc430
+          replicas: 2
+        gpus
+          resourceClass: h100
+          replicas: 1
       selector:
         matchLabels:
           hostPoolUID: 66b8ed6f-1af2-4892-ac12-47bd47dacd40
@@ -164,30 +220,32 @@ O-SAC network service (whose implementation is outside the scope of this proposa
         vlans:
         - network3
 
-Note that the selector values are supplied by the fulfillment service; these values are used to label the
+Note that the selector values are supplied by the Fulfillment Service; these values are used to label the
 created Hosts without any input needed from the tenant.
 
 If the tenant wishes to specify host properties, they can filter hosts by specifying hostSelectors that use standard
-Kubernetes `matchLabel` and `matchExpression` syntax; for example, this HostPool specification will require that the
-fc430 hosts be located on rack R2, but not in cabinet C2:
+Kubernetes `matchLabel` and `matchExpression` syntax; for example, this HostPool CR requires that the fc430 hosts be
+located on rack R2, but not in cabinet C2:
 
     apiVersion: o-sac.openshift.io/v1alpha1
     kind: HostPool
     metadata:
       name: examplehostpool
     spec:
-      hostRequests:
-      - resourceClass: fc430
-        replicas: 2
-        hostSelectors:
-          matchLabels:
-            row: R2
-          matchExpressions:
-          - op: NotIn
-            key: cabinet
-            values: ["C2"]
-      - resourceClass: h100
-        replicas: 1
+      hostSets:
+        workers:
+          resourceClass: fc430
+          replicas: 2
+          hostSelectors:
+            matchLabels:
+              row: R2
+            matchExpressions:
+            - op: NotIn
+              key: cabinet
+              values: ["C2"]
+        gpus:
+          resourceClass: h100
+          replicas: 1
       selector:
         matchLabels:
           hostPoolUID: 66b8ed6f-1af2-4892-ac12-47bd47dacd40
@@ -205,19 +263,21 @@ Note that initially, information regarding valid key/value pairs will have to be
 cloud provider. A later enhancement may allow O-SAC to provide this information through an API.
 
 If the tenant wishes to remove a host from their HostPool, then they will update their HostPool specification to reduce
-the number of Hosts of a resource class. The reconciliation process will remove an arbitrary Host of that resource class
-from the HostPool:
+the number of Hosts of a resource class, resulting in the following CR. The reconciliation process will remove an arbitrary
+Host of that resource class from the HostPool:
 
     apiVersion: o-sac.openshift.io/v1alpha1
     kind: HostPool
     metadata:
       name: examplehostpool
     spec:
-      hostRequests:
-      - resourceClass: fc430
-        replicas: 1
-      - resourceClass: h100
-        replicas: 1
+      hostSets:
+        workers:
+          resourceClass: fc430
+          replicas: 1
+        gpus:
+          resourceClass: h100
+          replicas: 1
       selector:
         matchLabels:
           hostPoolUID: 66b8ed6f-1af2-4892-ac12-47bd47dacd40
@@ -244,16 +304,18 @@ number of hosts constant while also excluding the unwanted host.
     metadata:
       name: examplehostpool
     spec:
-      hostRequests:
-      - resourceClass: fc430
-        replicas: 1
-        hostSelectors:
-          matchExpressions:
-          - op: NotIn
-            key: hostName
-            values: ["examplehost"]
-      - resourceClass: h100
-        replicas: 1
+      hostSets:
+        workers:
+          resourceClass: fc430
+          replicas: 1
+          hostSelectors:
+            matchExpressions:
+            - op: NotIn
+              key: hostName
+              values: ["examplehost"]
+        gpus:
+          resourceClass: h100
+          replicas: 1
       selector:
         matchLabels:
           hostPoolUID: 66b8ed6f-1af2-4892-ac12-47bd47dacd40
@@ -276,11 +338,13 @@ while `storage-network` will only be attached to an interface with the `25gb` pr
     metadata:
       name: example
     spec:
-      hostRequests:
-      - resourceClass: fc430
-        replicas: 2
-      - resourceClass: h100
-        replicas: 1
+      hostSets:
+        workers:
+          resourceClass: fc430
+          replicas: 2
+        gpus:
+          resourceClass: h100
+          replicas: 1
       selector:
         matchLabels:
           hostPoolUID: 66b8ed6f-1af2-4892-ac12-47bd47dacd40
@@ -297,14 +361,48 @@ while `storage-network` will only be attached to an interface with the `25gb` pr
 
 #### Hosts
 
-Tenants do not create Hosts directly; instead, they are created as part of the HostPool fulfillment workflow. Once created,
-tenants can perform host-specific operations:
+Tenants do not create Hosts directly; instead, they are created as part of the HostPool fulfillment workflow, resulting in a Host CR.
+For example:
+
+    apiVersion: cloudkit.openshift.io/v1alpha1
+    kind: Host
+    metadata:
+      name: examplehost
+      ownerReferences:
+      - apiVersion: o-sac.openshift.io/v1alpha1
+        blockOwnerDeletion: true
+        controller: true
+        kind: HostPool
+        name: examplehostpool
+        uid: 66b8ed6f-1af2-4892-ac12-47bd47dacd40
+      labels:
+        hostPoolUID: 66b8ed6f-1af2-4892-ac12-47bd47dacd40
+    spec:
+      powerState: PowerOff
+      serialConsole: Enabled
+    status:
+      powerState: PowerOff
+      serialConsole: Enabled
+      name: examplehost
+      properties:
+        cpus: 512
+        memory_mb: 1572864
+        accelerators:
+        - "NVIDIA Corporation GH100"
+
+The listed properties will depend upon the attributes returned by the underlying bare metal management service.
+
+Note that each Host has an ownerReferences entry to the parent HostPool; this will enable both cascading resource deletion, while
+also preventing the parent HostPool from being deleted until its child Hosts are deleted.
+
+Once created, tenants can use the Fulfillment CLI to perform various operations against the host:
 
 * Power control
 * Serial console access
 * Inventory information
 
-To support these operations, we propose a new Hosts API. For example, we can implement power control as an attribute on the Host object:
+A Hosts API will support these operations. For example, the tenant can edit the Host spec to change the power state, resulting
+in the following Host CR:
 
     apiVersion: cloudkit.openshift.io/v1alpha1
     kind: Host
@@ -323,7 +421,7 @@ To support these operations, we propose a new Hosts API. For example, we can imp
       powerState: PowerOn
       serialConsole: Enabled
     status:
-      powerState: PowerOn
+      powerState: PowerOff
       serialConsole: Enabled
       name: examplehost
       properties:
@@ -332,10 +430,8 @@ To support these operations, we propose a new Hosts API. For example, we can imp
         accelerators:
         - "NVIDIA Corporation GH100"
 
-The listed properties will depend upon the attributes returned by the underlying bare metal management service.
-
-Note that each Host has an ownerReferences entry to the parent HostPool; this will enable both cascading resource deletion, while
-also preventing the parent HostPool from being deleted until its child Hosts are deleted.
+The O-SAC Operator will detect the difference in powerState between the spec and the status, and call the bare metal service
+to power the host on before updating the Host's status to PowerOn.
 
 ### Implementation Details/Notes/Constraints
 
