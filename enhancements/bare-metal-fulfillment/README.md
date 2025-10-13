@@ -292,11 +292,17 @@ To support these operations, we propose a new Hosts API. For example, we can imp
     kind: Host
     metadata:
       name: example
+      ownerReferences:
+      - apiVersion: o-sac.openshift.io/v1alpha1
+        blockOwnerDeletion: true
+        controller: true
+        kind: HostPool
+        name: HostPoolX
+        uid: 66b8ed6f-1af2-4892-ac12-47bd47dacd40
     spec:
       powerState: PowerOn
       serialConsole: Enabled
     status:
-      hostPool: HostPoolX
       powerState: PowerOn
       serialConsole: Enabled
       name: HostX
@@ -307,6 +313,9 @@ To support these operations, we propose a new Hosts API. For example, we can imp
         - "NVIDIA Corporation GH100"
 
 The listed properties will depend upon the attributes returned by the underlying bare metal management service.
+
+Note that each Host has an ownerReferences entry to the parent HostPool; this will enable both cascading resource deletion, while
+also preventing the parent HostPool from being deleted until its child Hosts are deleted.
 
 ### Implementation Details/Notes/Constraints
 
