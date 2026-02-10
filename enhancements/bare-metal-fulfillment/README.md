@@ -11,7 +11,7 @@ see-also:
 replaces:
   - None
 superseded-by:
-  - None
+  - "/enhancements/generic-bare-metal-fulfillment"
 ---
 
 # Bare Metal Fulfillment
