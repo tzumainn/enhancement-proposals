@@ -77,7 +77,35 @@ In order to support generic cluster fulfillment workflows, we would extend the `
 * `profile`: a string used by O-SAC to place additional constraints upon host selection; for example, an `openshift` profile would only return hosts that are already provisioned as Agents
 * `template_output`: a dictionary where templates can set arbitrary key/value pairs that can later be returned to the user
 
-It is important to note that there have been concerns raised in regards to supporting arbitrary templates; those concerns are worth discussing here.
+We can look at our current O-SAC capabilities for examples where generic bare metal fulfillment would be useful. Although O-SAC currently only supports OpenShift cluster fulfillment, it also implicitly requires a bare metal provisioning workflow for creating Agents - a task that currently involves manually running a custom playbook. Generic bare metal fulfillment can be used to handle both scenarios:
+
+**OpenShift Cluster Fulfillment**
+
+1. A tenant request an OpenShift cluster through the Fulfillment Service
+2. The Fulfillment Service produces a Cluster CR
+   * This CR specifies `profile:openshift` as well as an OS Cluster Template
+3. The Cluster Operator attempts to fulfill the Cluster CR
+   * It attempts to locate the required number of free hosts that also match the profile `openshift`. A configuration file specifies that this profile will match hosts which have the property `managed_by:agent`
+   * If there are sufficient hosts are free, the Cluster Operator assigns them to the OS Cluster and performs the required network configuration; it then uses the OS Cluster Template to complete setup of the OpenShift Cluster
+   * If there are insufficient hosts free, the Cluster Operator waits a specified amount of time; then it returns to Step 3
+
+**Agent Fulfillment**
+
+This workflow assumes the creation of a  Bare Metal Pool Operator that is responsible for maintaining a configurable number of free Agents.
+
+1. The Bare Metal Pool Operator monitors Cluster CRs
+2. If a Cluster CR requests Agents, and there are either insufficient Agents or fulfillment would result in a lack of free Agents, then the Bare Metal Pool Operator determines how many new Agents are needed
+3. If new Agents are needed, then the Bare Metal Pool Operator produces a Cluster CR
+   * This CR specifies `profile:baremetal` as well as an Agents Template
+4. The Cluster Operator attempts to fulfill the Cluster CR
+   * It attempts to locate the required number of free hosts that also match the profile `baremetal`. A configuration file specifies that this profile will match hosts which have the property `managed_by:None`
+   * If there are sufficient hosts are free, the Cluster Operator assigns them to the Agent Cluster and uses the Agents Template to provision the hosts as Agents
+      * The Agents Template also updates these hosts: `managed_by:agent`
+   * If there are insufficient hosts free, the Cluster Operator waits a specified amount of time; then it returns to Step 3
+5. When Cluster fulfillment is complete, the Bare Metal Pool Operator deletes the Cluster CR
+   * The Cluster Operator unassigns each host from the Agent Cluster
+
+It is important to note the concerns that have been raised in regards to supporting arbitrary templates; those concerns are worth discussing here.
 
 ####  Template Parameter Validation
 
